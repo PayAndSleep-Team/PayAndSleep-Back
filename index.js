@@ -25,43 +25,49 @@ app.use(session({
     cookie: { secure: false }
 }));
 
-// Create table if not exists
-app.get('/api/create', (req, res) => {
-    let sql = `CREATE TABLE IF NOT EXISTS eiei (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
-        email TEXT UNIQUE,
-        password TEXT
-    )`;
-
-    db.run(sql, (err) => {
-        if (err) {
-            console.error('❌ Error creating table:', err.message);
-            res.status(500).json({ error: err.message });
-        } else {
-            console.log('✅ Table created successfully');
-            res.json({ message: "Table created successfully" });
-        }
-    });
-});
-
 app.post('/api/register', (req, res) => {
-    let { username, email, password } = req.body;
-    let sql = `INSERT INTO eiei (name, email, password) VALUES (?, ?, ?)`;
+    let { email, password, role, name, phone } = req.body;
 
-    db.run(sql, [username, email, password], function (err) {
+    let sql = `INSERT INTO users (email, password, role) VALUES (?, ?, ?)`;
+
+    db.run(sql, [email, password, role], function (err) {
         if (err) {
             console.error('❌ Error registering user:', err.message);
-            res.status(500).json({ error: err.message });
+            return res.status(500).json({ error: err.message });
+        }
+
+        const user_id = this.lastID;
+
+        let sql2;
+        let params;
+
+        if (role === 'host') {
+            sql2 = `INSERT INTO hosts (user_id, name, phone) VALUES (?, ?, ?)`;
+            params = [user_id, name, phone];
+        } else if (role === 'tenant') {
+            sql2 = `INSERT INTO tenants (user_id, name, phone) VALUES (?, ?, ?)`;
+            params = [user_id, name, phone];
+        }
+
+        if (sql2) {
+            db.run(sql2, params, function (err) {
+                if (err) {
+                    console.error(`❌ Error registering ${role}:`, err.message);
+                    return res.status(500).json({ error: err.message });
+                }
+
+                res.json({ message: "ลงทะเบียนสำเร็จ" });
+            });
         } else {
-            res.json({ message: "ลงทะเบียนสำเร็จ" });
+            res.status(400).json({ error: 'Invalid role specified' });
         }
     });
 });
+
 
 app.post('/api/login', (req, res) => {
     let { email, password } = req.body;
-    let sql = `SELECT * FROM eiei WHERE email = ?`;
+    let sql = `SELECT * FROM users WHERE email = ?`;
 
     db.get(sql, [email], (err, user) => {
         if (err) {
@@ -72,9 +78,24 @@ app.post('/api/login', (req, res) => {
         } else if (user.password !== password) {
             res.json({ message: "รหัสผ่านไม่ถูกต้อง" });
         } else {
-            req.session.user = user;
-            console.log('✅ User logged in');
-            res.json({ message: "เข้าสู่ระบบสำเร็จ" });
+            if (user.role === 'host') {
+                sql = `SELECT * FROM hosts WHERE user_id = ?`;
+            } else if (user.role === 'tenant') {
+                sql = `SELECT * FROM tenants WHERE user_id = ?`;
+            }
+
+            db.get(sql, [user.id], (err, profile) => {
+                if (err) {
+                    console.error('❌ Error fetching profile:', err.message);
+                    res.status(500).json({ error: err.message });
+                } else {
+                    user.profile = profile;
+                    req.session.user = user;
+                    console.log('✅ User logged in');
+                    console.log(req.session.user);
+                    res.json({ message: "เข้าสู่ระบบสำเร็จ" });
+                }
+            });
         }
     });
 });
@@ -85,15 +106,6 @@ app.get('/api/session', (req, res) => {
     } else {
         res.json({ message: "ไม่ได้เข้าสู่ระบบ" });
     }
-});
-
-app.get('/test', (req, res) => {
-    if (!req.session.viewCount) {
-        req.session.viewCount = 1;
-    } else {
-        req.session.viewCount += 1;
-    }
-    res.send(`Views: ${req.session.viewCount}`);
 });
 
 app.get('/api/logout', (req, res) => {
