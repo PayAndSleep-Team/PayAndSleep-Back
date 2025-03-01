@@ -107,7 +107,7 @@ app.get('/api/host/property', (req, res) => {
             res.status(500).json({ error: err.message });
         } else {
             if (properties.length === 0) {
-                res.redirect('http://localhost:5173/host/create-property');
+                res.redirect('http://localhost:5173/landing/create-property');
             } else {
                 req.session.user.property = properties[0];
                 res.redirect('http://localhost:5173/host/dashboard');
@@ -127,6 +127,81 @@ app.post('/api/create/property', (req, res) => {
         } else {
             req.session.user.property = property;
             res.json({ message: "สร้าง Property สำเร็จ" });
+        }
+    });
+});
+
+app.post('/api/create/room', (req, res) => {
+    let { room_number, size, price } = req.body;
+    let sql = `INSERT INTO rooms (property_id, room_number, size, price, status) VALUES (?, ?, ?, ?, ?)`;
+
+    db.run(sql, [req.session.user.property.id, room_number, size, price, 'available'], function (err, room) {
+        if (err) {
+            console.error('❌ Error creating room:', err.message);
+            res.status(500).json({ error: err.message });
+        } else {
+            res.json({ message: "สร้าง Room สำเร็จ" });
+        }
+    });
+});
+
+app.get('/api/tenant/rental-contract', (req, res) => {
+    let sql = `SELECT * FROM rental_contracts WHERE tenant_id = ?`;
+
+    db.all(sql, [req.session.user.profile.id], (err, rentals) => {
+        if (err) {
+            console.error('❌ Error fetching rentals:', err.message);
+            res.status(500).json({ error: err.message });
+        } else {
+            if (rentals.length === 0) {
+                res.redirect('http://localhost:5173/landing/selectProperty');
+            } else {
+                req.session.user.rental = rentals[0];
+                res.redirect('http://localhost:5173/tenant/dashboard');
+            }
+        }
+    });
+});
+
+app.get('/api/get/property', (req, res) => {
+    let sql = `SELECT * FROM properties`;
+
+    db.all(sql, (err, properties) => {
+        if (err) {
+            console.error('❌ Error fetching properties:', err.message);
+            res.status(500).json({ error: err.message });
+        } else {
+            res.json(properties);
+        }
+    });
+});
+
+app.get('/api/get/rooms', (req, res) => {
+    let { property_id } = req.query;
+    let sql = `SELECT * FROM rooms WHERE property_id = ?`;
+
+    db.all(sql, [property_id], (err, rooms) => {
+        if (err) {
+            console.error('❌ Error fetching rooms:', err.message);
+            res.status(500).json({ error: err.message });
+        } else {
+            res.json(rooms);
+        }
+    });
+});
+
+app.post('/api/create/rental-contract', (req, res) => {
+    let { room_id, start_date, end_date } = req.body;
+
+    let sql = `INSERT INTO rental_contracts (tenant_id, room_id, start_date, end_date, status) VALUES (?, ?, ?, ?, ?)`;
+
+    db.run(sql, [req.session.user.profile.id, room_id, start_date, end_date, 'waiting'], function (err, rental) {
+        if (err) {
+            console.error('❌ Error creating rental:', err.message);
+            res.status(500).json({ error: err.message });
+        } else {
+            req.session.user.rental = rental;
+            res.json({ message: "สร้างสัญญาเช่าสำเร็จ" });
         }
     });
 });
